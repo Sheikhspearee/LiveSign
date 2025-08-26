@@ -1,0 +1,11 @@
+{
+  "camera_index": 0,
+  "frame_width": 640,
+  "frame_height": 480,
+  "smoothing_window": 7,
+  "pause_frames": 30,
+  "tts_enabled": true,
+  "det_confidence": 0.5,
+  "track_confidence": 0.5,
+  "log_level": "INFO"
+}

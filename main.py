@@ -1,53 +1,98 @@
-import threading
+"""
+LiveSign MVP launcher. Split into modules for clarity.
+"""
+
+from __future__ import annotations
+
+import time
+from typing import Optional
 
 import cv2
-from deepface import DeepFace
-face_match = False
-reference_image = cv2.imread("reference.jpg")
 
-def main():
+from config import (
+    FRAME_WIDTH,
+    FRAME_HEIGHT,
+    PREDICTION_SMOOTHING_WINDOW,
+    SENTENCE_PAUSE_FRAMES,
+    KEYWORDS,
+)
+from config_loader import load_settings
+from logging_utils import setup_logging
+from recognizer import HandSignRecognizer
+from smoothing import Smoother
+from nlp_engine import SimpleNLP
+from tts import Speaker
+from overlay import draw_overlay
 
-    captured_object = cv2.VideoCapture(0, cv2.CAP_DSHOW)
 
+def main(config_path: str | None = None):
+    settings = load_settings(config_path)
+    logger = setup_logging(settings.get("log_level", "INFO"))
 
-    captured_object.set(cv2.CAP_PROP_FRAME_WIDTH,640)
-    captured_object.set(cv2.CAP_PROP_FRAME_HEIGHT,480)
+    cam_index = int(settings.get("camera_index", 0))
+    width = int(settings.get("frame_width", FRAME_WIDTH))
+    height = int(settings.get("frame_height", FRAME_HEIGHT))
+    smooth_window = int(settings.get("smoothing_window", PREDICTION_SMOOTHING_WINDOW))
+    pause_frames = int(settings.get("pause_frames", SENTENCE_PAUSE_FRAMES))
+    det_conf = float(settings.get("det_confidence", 0.5))
+    track_conf = float(settings.get("track_confidence", 0.5))
 
-    counter = 0
+    cap = cv2.VideoCapture(cam_index)
+    cap.set(cv2.CAP_PROP_FRAME_WIDTH, width)
+    cap.set(cv2.CAP_PROP_FRAME_HEIGHT, height)
 
-    while True:
-        returned , frame = captured_object.read()
+    recognizer = HandSignRecognizer(max_num_hands=1, det_conf=det_conf, track_conf=track_conf)
+    smoother = Smoother(window=smooth_window)
+    nlp = SimpleNLP()
+    speaker = Speaker()
+    logger.info("LiveSign started (camera=%s, %sx%s)", cam_index, width, height)
 
-        if returned:
-            if counter % 30 == 0:
-                try:
-                    threading.Thread(target=check_face, args=(frame.copy(),)).start()
-                except ValueError:
-                    pass
-            counter += 1
-
-            if face_match:
-                cv2.putText(frame, "Match",(20,450),cv2.FONT_HERSHEY_SIMPLEX, 2, (0,255,0), 3)
-            else:
-                cv2.putText(frame, "No Match",(20,450),cv2.FONT_HERSHEY_SIMPLEX, 2, (0,0,255), 3)
-
-            cv2.imshow("video",frame)
-
-        key = cv2.waitKey(1)
-        if key == ord("q"):
-            break
-    cv2.destroyAllWindows()
-
-def check_face(frame):
-    global face_match
+    last_detect_frame = 0
+    frame_idx = 0
+    last_time = time.time()
+    fps = 0.0
 
     try:
-        if DeepFace.verify(frame, reference_image)['verified']:
-            face_match = True
-        else: 
-            face_match = False
+        while True:
+            ok, frame = cap.read()
+            if not ok:
+                break
+            frame_idx += 1
 
-    except ValueError:
-            face_match = False
+            landmarks_list, handedness = recognizer.detect(frame)
+            predicted_kw: Optional[str] = None
 
-main()
+            if landmarks_list and handedness:
+                landmarks_xy = landmarks_list[0]
+                predicted_kw = recognizer.recognize_gesture(landmarks_xy, handedness)
+                last_detect_frame = frame_idx
+
+            stable_kw = smoother.push(predicted_kw)
+            if stable_kw is not None and stable_kw in KEYWORDS:
+                nlp.maybe_add_keyword(stable_kw)
+
+            if (frame_idx - last_detect_frame) >= pause_frames and nlp.current_tokens:
+                sentence = nlp.pretty_sentence()
+                if sentence:
+                    speaker.speak(sentence)
+                nlp.reset()
+
+            now = time.time()
+            dt = now - last_time
+            if dt >= 0.5:
+                fps = 1.0 / max(1e-6, dt)
+                last_time = now
+
+            draw_overlay(frame, stable_kw, nlp, fps)
+            cv2.imshow("LiveSign - Hand Gestures", frame)
+
+            key = cv2.waitKey(1) & 0xFF
+            if key == ord('q'):
+                break
+    finally:
+        cap.release()
+        cv2.destroyAllWindows()
+
+
+if __name__ == "__main__":
+    main("config_default.json")
