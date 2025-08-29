@@ -75,3 +75,5 @@ Contributions are welcome! You can help by:
 ## ✨ Inspiration
 LiveSign was created to make communication **accessible, natural, and inclusive**.  
 By leveraging modern AI, we aim to remove barriers between sign language and spoken language.  
+
+
