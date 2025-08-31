@@ -26,6 +26,7 @@ By combining **computer vision** and **natural language processing (NLP)**, Live
 4. **Output** – Translated sentences appear as **text** and can also be spoken aloud with **text-to-speech**.  
 
 ---
+## (Tech Stack N/A - Switching entire stack)
 
 ## 🛠 Tech Stack
 - **Computer Vision**: MediaPipe Hands, OpenPose  
