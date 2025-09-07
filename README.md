@@ -70,7 +70,7 @@ Contributions are welcome! You can help by:
 - Expanding datasets (especially SASL)  
 - Enhancing NLP translation rules/models  
 - Testing across different devices  
-
+- Providing data to train with
 ---
 
 ## ✨ Inspiration
